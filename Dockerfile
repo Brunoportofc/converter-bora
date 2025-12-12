@@ -1,5 +1,5 @@
 # Base leve
-FROM node:18-alpine
+FROM node:20-alpine
 
 # INSTALA O GHOSTSCRIPT (O Pulo do Gato)
 RUN apk update && apk add --no-cache ghostscript
