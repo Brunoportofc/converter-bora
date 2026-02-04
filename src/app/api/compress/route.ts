@@ -7,6 +7,16 @@ import os from 'os';
 
 const execAsync = promisify(exec);
 
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+    return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File;
@@ -45,17 +55,20 @@ export async function POST(req: NextRequest) {
         await unlink(inputPath);
         await unlink(outputPath);
 
-        // 5. Retorna o arquivo para o usuário
         return new NextResponse(compressedPdf, {
             status: 200,
             headers: {
                 'Content-Type': 'application/pdf',
                 'Content-Disposition': `attachment; filename="comprimido_${file.name}"`,
+                ...corsHeaders,
             },
         });
 
     } catch (error) {
         console.error('Erro na compressão:', error);
-        return NextResponse.json({ error: 'Falha ao comprimir o PDF. O Ghostscript está instalado?' }, { status: 500 });
+        return NextResponse.json(
+            { error: 'Falha ao comprimir o PDF. O Ghostscript está instalado?' },
+            { status: 500, headers: corsHeaders }
+        );
     }
 }
