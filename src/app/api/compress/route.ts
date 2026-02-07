@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
         // - JPEG quality baixa (30-40)
         // - Downsample para 72dpi
         // - Mantém cores (sem DeviceGray)
-        const gsExecutable = os.platform() === 'win32' ? 'gswin64c' : 'gs';
-        const gsCommand = `${gsExecutable} -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dColorImageDownsampleType=/Bicubic -dColorImageResolution=72 -dGrayImageDownsampleType=/Bicubic -dGrayImageResolution=72 -dMonoImageDownsampleType=/Bicubic -dMonoImageResolution=72 -dColorImageDownsampleThreshold=1.0 -dGrayImageDownsampleThreshold=1.0 -dDownsampleColorImages=true -dDownsampleGrayImages=true -dDownsampleMonoImages=true -dAutoFilterColorImages=false -dAutoFilterGrayImages=false -dColorImageFilter=/DCTEncode -dGrayImageFilter=/DCTEncode -sColorConversionStrategy=RGB -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${outputPath}" "${inputPath}"`;
+        const gsExecutable = process.env.GHOSTSCRIPT_PATH || (os.platform() === 'win32' ? 'gswin64c' : 'gs');
+        const gsCommand = `"${gsExecutable}" -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dColorImageDownsampleType=/Bicubic -dColorImageResolution=72 -dGrayImageDownsampleType=/Bicubic -dGrayImageResolution=72 -dMonoImageDownsampleType=/Bicubic -dMonoImageResolution=72 -dColorImageDownsampleThreshold=1.0 -dGrayImageDownsampleThreshold=1.0 -dDownsampleColorImages=true -dDownsampleGrayImages=true -dDownsampleMonoImages=true -dAutoFilterColorImages=false -dAutoFilterGrayImages=false -dColorImageFilter=/DCTEncode -dGrayImageFilter=/DCTEncode -sColorConversionStrategy=RGB -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${outputPath}" "${inputPath}"`;
 
         console.log('🔄 Processando PDF...');
         await execAsync(gsCommand);
