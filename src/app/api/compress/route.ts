@@ -42,7 +42,26 @@ export async function POST(req: NextRequest) {
         // - JPEG quality baixa (30-40)
         // - Downsample para 72dpi
         // - Mantém cores (sem DeviceGray)
-        const gsExecutable = process.env.GHOSTSCRIPT_PATH || (os.platform() === 'win32' ? 'gswin64c' : 'gs');
+
+        let gsExecutable = process.env.GHOSTSCRIPT_PATH;
+
+        if (!gsExecutable) {
+            if (process.env.VERCEL) {
+                // Caminho na Vercel (Linux)
+                gsExecutable = join(process.cwd(), 'bin', 'gs');
+                // Garante permissão de execução (embora no Windows não faça nada, no Linux é vital)
+                try {
+                    await execAsync(`chmod +x "${gsExecutable}"`);
+                } catch (e) {
+                    // Ignora erro de chmod se não for possível, mas tenta executar mesmo assim
+                    console.log('Aviso: chmod falhou ou não é necessário', e);
+                }
+            } else {
+                // Caminho Local (Windows/Mac/Linux)
+                gsExecutable = os.platform() === 'win32' ? 'gswin64c' : 'gs';
+            }
+        }
+
         const gsCommand = `"${gsExecutable}" -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dColorImageDownsampleType=/Bicubic -dColorImageResolution=72 -dGrayImageDownsampleType=/Bicubic -dGrayImageResolution=72 -dMonoImageDownsampleType=/Bicubic -dMonoImageResolution=72 -dColorImageDownsampleThreshold=1.0 -dGrayImageDownsampleThreshold=1.0 -dDownsampleColorImages=true -dDownsampleGrayImages=true -dDownsampleMonoImages=true -dAutoFilterColorImages=false -dAutoFilterGrayImages=false -dColorImageFilter=/DCTEncode -dGrayImageFilter=/DCTEncode -sColorConversionStrategy=RGB -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${outputPath}" "${inputPath}"`;
 
         console.log('🔄 Processando PDF...');
