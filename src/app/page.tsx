@@ -1,17 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { runGhostscript } from './utils/ghostscript';
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [progress, setProgress] = useState(0); // Emulate progress or use logs if possible
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('Evento onChange disparado:', e.target.files);
     if (e.target.files && e.target.files.length > 0) {
       const selectedFile = e.target.files[0];
-      console.log('Arquivo selecionado:', selectedFile.name, selectedFile.size);
       setFile(selectedFile);
       setStatus('');
     }
@@ -21,22 +21,17 @@ export default function Home() {
     if (!file) return;
 
     setLoading(true);
-    setStatus('Enviando e comprimindo (isso pode levar alguns segundos)...');
+    setStatus('Inicializando motor de compressão (isso roda no seu navegador)...');
 
-    const formData = new FormData();
-    formData.set('file', file);
+    // Pequeno delay para permitir que a UI atualize antes de travar a thread (se não usarmos worker)
+    await new Promise(r => setTimeout(r, 100));
 
     try {
-      const response = await fetch('/api/compress', {
-        method: 'POST',
-        body: formData,
-      });
+      setStatus('Esmagando PDF... (Pode travar um pouquinho, aguente firme!)');
 
-      if (!response.ok) throw new Error('Erro na compressão');
+      const compressedBlob = await runGhostscript(file);
 
-      // Converte a resposta em Blob para baixar
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(compressedBlob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `mini_${file.name}`;
@@ -44,10 +39,10 @@ export default function Home() {
       a.click();
       window.URL.revokeObjectURL(url);
 
-      setStatus('✅ Sucesso! Download iniciado.');
-    } catch (error) {
+      setStatus(`✅ Sucesso! Reduzido de ${(file.size / 1024 / 1024).toFixed(2)}MB para ${(compressedBlob.size / 1024 / 1024).toFixed(2)}MB`);
+    } catch (error: any) {
       console.error(error);
-      setStatus('❌ Erro ao processar. Verifique se o arquivo não é muito grande para o servidor.');
+      setStatus(`❌ Erro: ${error.message || 'Falha desconhecida'}`);
     } finally {
       setLoading(false);
     }
@@ -57,13 +52,13 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-950 text-white">
       <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex-col">
         <h1 className="text-4xl font-bold mb-8 text-center text-blue-500">
-          Esmagador de PDF
+          Esmagador de PDF (Client-Side)
         </h1>
 
         <div className="bg-gray-900 p-8 rounded-xl border border-gray-800 shadow-2xl flex flex-col gap-6 items-center">
           <div className="w-full">
             <label className="block mb-2 text-sm font-medium text-gray-300">
-              Selecione o PDF gigante (Max 180MB se rodar local/Docker)
+              Selecione o PDF gigante (Sem limites de tamanho!)
             </label>
             <input
               type="file"
@@ -99,10 +94,14 @@ export default function Home() {
           </button>
 
           {status && (
-            <p className={`mt-4 font-semibold ${status.includes('Sucesso') ? 'text-green-400' : 'text-yellow-400'}`}>
+            <p className={`mt-4 font-semibold text-center ${status.includes('Sucesso') ? 'text-green-400' : 'text-yellow-400'}`}>
               {status}
             </p>
           )}
+
+          <p className="text-xs text-center text-gray-500 mt-2">
+            Nota: Todo o processamento é feito no seu dispositivo. Nada é enviado para a nuvem.
+          </p>
         </div>
       </div>
     </main>
