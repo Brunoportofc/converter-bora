@@ -84,10 +84,11 @@ export const runGhostscript = async (inputFile: File): Promise<Blob> => {
     console.log('Running GS with args:', args);
 
     try {
-        // callMain expects an array of strings. 
-        // The first arg usually is the program name, but Emscripten's callMain might take just args.
-        // Let's check if we need to pass 'gs' as first arg. Usually yes.
-        module.callMain(['gs', ...args]);
+        // The first arg in callMain is typically the program name in standard C main(argc, argv),
+        // but Emscripten wrappers often abstract this or expect it.
+        // However, the error '/undefinedfilename in (gs)' suggests it tried to open 'gs' as a file?
+        // Let's try passing ONLY the flags.
+        module.callMain([...args]);
     } catch (e) {
         // Emscripten throws ExitStatus on exit, which we should catch if it's 0 (success)
         // actually callMain might not throw if NO_EXIT_RUNTIME is set, but better safe.
