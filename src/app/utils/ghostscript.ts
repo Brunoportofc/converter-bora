@@ -1,109 +1,56 @@
-let gsModule: any = null;
-
-// Helper to load the script dynamically
-const loadScript = (src: string) => {
-    return new Promise((resolve, reject) => {
-        if (document.querySelector(`script[src="${src}"]`)) {
-            resolve(true);
-            return;
-        }
-        const script = document.createElement('script');
-        script.src = src;
-        script.onload = () => resolve(true);
-        script.onerror = () => reject(new Error(`Failed to load script ${src}`));
-        document.body.appendChild(script);
-    });
-};
-
-export const initGhostscript = async () => {
-    if (gsModule) return gsModule;
-
-    // Polyfill exports if needed by the script
-    if (typeof (window as any).exports === 'undefined') {
-        (window as any).exports = {};
-    }
-
-    await loadScript('/gs/gs.js');
-
-    // The script should have populated window.exports.Module
-    const ModuleFactory = (window as any).exports.Module;
-
-    if (!ModuleFactory) {
-        throw new Error('Ghostscript WASM module factory not found. Check gs.js loading.');
-    }
-
-    gsModule = await ModuleFactory({
-        locateFile: (path: string, prefix: string) => {
-            if (path.endsWith('.wasm')) {
-                return '/gs/gs.wasm';
-            }
-            return prefix + path;
-        },
-        print: (text: string) => console.log('[GS]', text),
-        printErr: (text: string) => console.error('[GS Error]', text),
-    });
-
-    return gsModule;
-};
 
 export const runGhostscript = async (inputFile: File): Promise<Blob> => {
-    const module = await initGhostscript();
+    return new Promise(async (resolve, reject) => {
+        let worker: Worker | null = null;
+        let timeoutId: any = null;
 
-    const inputFileName = 'input.pdf';
-    const outputFileName = 'output.pdf';
+        try {
+            worker = new Worker('/gs-worker.js');
+            const buffer = await inputFile.arrayBuffer();
 
-    // Write input file to Emscripten FS
-    const buffer = await inputFile.arrayBuffer();
-    module.FS.writeFile(inputFileName, new Uint8Array(buffer));
+            // Timeout to prevent infinite freeze
+            timeoutId = setTimeout(() => {
+                if (worker) worker.terminate();
+                reject(new Error('Tempo limite excedido. O processamento demorou muito.'));
+            }, 60000); // 60 seconds
 
-    // Build arguments
-    // Note: -sDEVICE=pdfwrite ...
-    const args = [
-        '-sDEVICE=pdfwrite',
-        '-dCompatibilityLevel=1.4',
-        '-dPDFSETTINGS=/screen', // eBook or screen for compression
-        '-dNOPAUSE',
-        '-dQUIET',
-        '-dBATCH',
-        // Flags for aggressive compression (same as server-side)
-        '-dColorImageDownsampleType=/Bicubic',
-        '-dColorImageResolution=72',
-        '-dGrayImageDownsampleType=/Bicubic',
-        '-dGrayImageResolution=72',
-        '-dMonoImageDownsampleType=/Bicubic',
-        '-dMonoImageResolution=72',
-        '-dColorImageDownsampleThreshold=1.0',
-        '-dGrayImageDownsampleThreshold=1.0',
-        '-dDownsampleColorImages=true',
-        '-dDownsampleGrayImages=true',
-        '-dDownsampleMonoImages=true',
-        `-sOutputFile=${outputFileName}`,
-        inputFileName
-    ];
+            worker.onmessage = (e) => {
+                const { status, data, error, message } = e.data;
 
-    console.log('Running GS with args:', args);
+                if (status === 'success' && data) {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    resolve(data);
+                    worker?.terminate();
+                } else if (status === 'error') {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    reject(new Error(error));
+                    worker?.terminate();
+                } else if (status === 'log') {
+                    console.log(message);
+                }
+            };
 
-    try {
-        // The first arg in callMain is typically the program name in standard C main(argc, argv),
-        // but Emscripten wrappers often abstract this or expect it.
-        // However, the error '/undefinedfilename in (gs)' suggests it tried to open 'gs' as a file?
-        // Let's try passing ONLY the flags.
-        module.callMain([...args]);
-    } catch (e) {
-        // Emscripten throws ExitStatus on exit, which we should catch if it's 0 (success)
-        // actually callMain might not throw if NO_EXIT_RUNTIME is set, but better safe.
-        console.log('GS Execution finished', e);
-    }
+            worker.onerror = (err) => {
+                if (timeoutId) clearTimeout(timeoutId);
+                console.error('Worker error:', err);
+                reject(new Error('Falha na inicialização do Worker.'));
+                worker?.terminate();
+            };
 
-    // Read output
-    const outputFileContent = module.FS.readFile(outputFileName);
-    const blob = new Blob([outputFileContent], { type: 'application/pdf' });
+            // Send data to worker, transferring buffer ownership for performance
+            worker.postMessage(
+                {
+                    command: 'compress',
+                    fileBuffer: buffer,
+                    inputFileName: 'input.pdf'
+                },
+                [buffer]
+            );
 
-    // Cleanup
-    try {
-        module.FS.unlink(inputFileName);
-        module.FS.unlink(outputFileName);
-    } catch (e) { /* ignore */ }
-
-    return blob;
+        } catch (error) {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (worker) worker.terminate();
+            reject(error);
+        }
+    });
 };
