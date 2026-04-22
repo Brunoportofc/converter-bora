@@ -14,7 +14,7 @@ interface ResultCardProps {
     onReset: () => void;
 }
 
-export function ResultCard({ originalSize, compressedSize, fileName, downloadUrl, onReset }: ResultCardProps) {
+export function ResultCard({ originalSize, compressedSize, fileName, downloadUrl, onReset, mode = 'compress' }: ResultCardProps & { mode?: 'compress' | 'convert' }) {
     const savings = originalSize - compressedSize;
     const savingsPercent = ((savings / originalSize) * 100).toFixed(1);
 
@@ -25,6 +25,8 @@ export function ResultCard({ originalSize, compressedSize, fileName, downloadUrl
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
+
+    const isConvert = mode === 'convert';
 
     return (
         <motion.div
@@ -40,27 +42,31 @@ export function ResultCard({ originalSize, compressedSize, fileName, downloadUrl
                 </div>
 
                 <h3 className="text-2xl font-bold text-white mb-1">Prontinho!</h3>
-                <p className="text-gray-400 text-sm mb-6">Seu arquivo foi esmagado com sucesso.</p>
+                <p className="text-gray-400 text-sm mb-6">
+                    {isConvert ? 'Seu arquivo foi convertido com sucesso.' : 'Seu arquivo foi esmagado com sucesso.'}
+                </p>
 
-                <div className="grid grid-cols-3 gap-0 w-full mb-8 items-center bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                    <div className="text-center">
-                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Antigo</p>
-                        <p className="text-gray-300 font-mono mt-1">{formatSize(originalSize)}</p>
+                {!isConvert && (
+                    <div className="grid grid-cols-3 gap-0 w-full mb-8 items-center bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                        <div className="text-center">
+                            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Antigo</p>
+                            <p className="text-gray-300 font-mono mt-1">{formatSize(originalSize)}</p>
+                        </div>
+                        <div className="flex justify-center flex-col items-center">
+                            <ArrowRight className="w-5 h-5 text-gray-600" />
+                            <span className="text-xs text-green-400 font-bold mt-1">-{savingsPercent}%</span>
+                        </div>
+                        <div className="text-center">
+                            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Novo</p>
+                            <p className="text-green-400 font-mono font-bold mt-1">{formatSize(compressedSize)}</p>
+                        </div>
                     </div>
-                    <div className="flex justify-center flex-col items-center">
-                        <ArrowRight className="w-5 h-5 text-gray-600" />
-                        <span className="text-xs text-green-400 font-bold mt-1">-{savingsPercent}%</span>
-                    </div>
-                    <div className="text-center">
-                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Novo</p>
-                        <p className="text-green-400 font-mono font-bold mt-1">{formatSize(compressedSize)}</p>
-                    </div>
-                </div>
+                )}
 
                 <div className="flex flex-col w-full gap-3">
                     <a
                         href={downloadUrl}
-                        download={`mini_${fileName}`}
+                        download={isConvert ? fileName.replace('.pdf', '.docx') : `mini_${fileName}`}
                         className={twMerge(
                             "flex items-center justify-center gap-2 w-full py-3.5 px-6 rounded-xl font-bold text-white transition-all transform hover:-translate-y-1 active:scale-95",
                             "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 shadow-lg shadow-green-900/40"
@@ -75,10 +81,11 @@ export function ResultCard({ originalSize, compressedSize, fileName, downloadUrl
                         className="flex items-center justify-center gap-2 w-full py-3 px-6 rounded-xl font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
                     >
                         <RefreshCw className="w-4 h-4" />
-                        Esmagar outro PDF
+                        {isConvert ? 'Converter outro PDF' : 'Esmagar outro PDF'}
                     </button>
                 </div>
             </div>
         </motion.div>
     );
+
 }

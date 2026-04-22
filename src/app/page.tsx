@@ -8,6 +8,8 @@ import { SquashingAnimation } from './components/SquashingAnimation';
 import { ResultCard } from './components/ResultCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Hammer } from 'lucide-react';
+import { clsx } from 'clsx';
+
 
 type AppState = 'IDLE' | 'SELECTED' | 'COMPRESSING' | 'SUCCESS' | 'ERROR';
 
@@ -33,39 +35,62 @@ export default function Home() {
     setResult(null);
   };
 
-  const handleCompress = async () => {
+  const [mode, setMode] = useState<'compress' | 'convert'>('compress');
+  const [textOnly, setTextOnly] = useState(false);
+
+  const handleProcess = async () => {
+
     if (!file) return;
 
     setAppState('COMPRESSING');
-
-    // Give UI time to update
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 100)); // UI update
 
     try {
-      // Simulate/Show animation for a minimum time so user sees the "squashing"
-      const startTime = Date.now();
+      if (mode === 'compress') {
+        const startTime = Date.now();
+        const compressedBlob = await runGhostscript(file);
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime < 2000) await new Promise(r => setTimeout(r, 2000 - elapsedTime));
 
-      const compressedBlob = await runGhostscript(file);
+        const url = window.URL.createObjectURL(compressedBlob);
+        setResult({
+          originalSize: file.size,
+          compressedSize: compressedBlob.size,
+          downloadUrl: url
+        });
+      } else {
+        // Conversion Mode
+        const formData = new FormData();
+        formData.append('file', file);
+        if (textOnly) {
+          formData.append('strategy', 'text-only');
+        }
 
-      // Ensure animation plays for at least 2 seconds
-      const elapsedTime = Date.now() - startTime;
-      if (elapsedTime < 2000) {
-        await new Promise(r => setTimeout(r, 2000 - elapsedTime));
+        const response = await fetch('/api/convert/pdf-to-word', {
+
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error('Erro na conversão');
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+
+        setResult({
+          originalSize: file.size,
+          compressedSize: 0, // Not relevant for conversion
+          downloadUrl: url
+        });
       }
-
-      const url = window.URL.createObjectURL(compressedBlob);
-      setResult({
-        originalSize: file.size,
-        compressedSize: compressedBlob.size,
-        downloadUrl: url
-      });
       setAppState('SUCCESS');
     } catch (error: any) {
       console.error(error);
-      setErrorMessage(error.message || 'Ocorreu um erro ao esmagar o PDF.');
+      setErrorMessage(error.message || `Erro ao ${mode === 'compress' ? 'esmagar' : 'converter'} o PDF.`);
       setAppState('ERROR');
     }
   };
+
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-24 bg-[#0a0a0a] text-white relative overflow-hidden">
@@ -90,8 +115,11 @@ export default function Home() {
             </h1>
           </div>
           <p className="text-gray-400 text-lg">
-            Reduza o tamanho dos seus arquivos localmente, sem enviar para a nuvem.
+            {mode === 'compress'
+              ? "Reduza o tamanho dos seus arquivos localmente, sem enviar para a nuvem."
+              : "Transforme seus PDFs em documentos Word editáveis."}
           </p>
+
         </motion.div>
 
         {/* Content Area */}
@@ -108,11 +136,62 @@ export default function Home() {
                 transition={{ duration: 0.3 }}
                 className="w-full flex flex-col gap-8"
               >
+
+                <div className="flex justify-center mb-8">
+                  <div className="bg-gray-800 p-1 rounded-lg flex items-center">
+                    <button
+                      onClick={() => setMode('compress')}
+                      className={clsx(
+                        "px-4 py-2 rounded-md text-sm font-medium transition-all",
+                        mode === 'compress' ? "bg-gray-700 text-white shadow" : "text-gray-400 hover:text-white"
+                      )}
+                    >
+                      Comprimir
+                    </button>
+                    <button
+                      onClick={() => setMode('convert')}
+                      className={clsx(
+                        "px-4 py-2 rounded-md text-sm font-medium transition-all",
+                        mode === 'convert' ? "bg-blue-600 text-white shadow" : "text-gray-400 hover:text-white"
+                      )}
+                    >
+                      Converter para Word
+                    </button>
+                  </div>
+                </div>
+
+                {mode === 'convert' && (
+                  <div className="flex justify-center mb-6">
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          checked={textOnly}
+                          onChange={(e) => setTextOnly(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div className={clsx(
+                          "w-10 h-6 rounded-full transition-colors",
+                          textOnly ? "bg-blue-600" : "bg-gray-700"
+                        )}></div>
+                        <div className={clsx(
+                          "absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform transform",
+                          textOnly ? "translate-x-4" : "translate-x-0"
+                        )}></div>
+                      </div>
+                      <span className="text-gray-300 text-sm group-hover:text-white transition-colors">
+                        Modo Texto Puro (Corrige caracteres estranhos)
+                      </span>
+                    </label>
+                  </div>
+                )}
+
                 <Dropzone
+
                   onFileSelect={handleFileSelect}
                   file={file}
                   onClear={handleClear}
-                  disabled={appState === 'ERROR'} // Optional: disable while showing error? No, let them retry.
+                  disabled={appState === 'ERROR'}
                 />
 
                 {appState === 'ERROR' && (
@@ -133,13 +212,22 @@ export default function Home() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 10 }}
-                        onClick={handleCompress}
-                        className="group relative px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full font-bold text-lg shadow-lg shadow-blue-900/30 hover:shadow-blue-900/50 hover:scale-105 transition-all duration-300 overflow-hidden"
+                        onClick={handleProcess}
+                        className={clsx(
+                          "group relative px-8 py-4 rounded-full font-bold text-lg shadow-lg transition-all duration-300 overflow-hidden hover:scale-105",
+                          mode === 'compress'
+                            ? "bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-900/30 hover:shadow-blue-900/50"
+                            : "bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-900/30 hover:shadow-emerald-900/50"
+                        )}
                       >
                         <span className="relative z-10 flex items-center gap-2">
-                          Esmagar Agora <Hammer className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                          {mode === 'compress' ? 'Esmagar Agora' : 'Converter Agora'}
+                          <Hammer className={clsx("w-5 h-5 transition-transform", mode === 'compress' && "group-hover:rotate-12")} />
                         </span>
-                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-blue-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        <div className={clsx(
+                          "absolute inset-0 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity duration-300",
+                          mode === 'compress' ? "from-indigo-600 to-blue-600" : "from-teal-600 to-emerald-600"
+                        )} />
                       </motion.button>
                     )}
                   </AnimatePresence>
@@ -163,7 +251,10 @@ export default function Home() {
                   transition={{ delay: 0.5 }}
                   className="text-center text-gray-500 mt-8 text-sm"
                 >
-                  Isso roda no seu navegador, pode travar um pouquinho...
+                  {mode === 'compress'
+                    ? "Isso roda no seu navegador, pode travar um pouquinho..."
+                    : "Enviando para o servidor para conversão..."}
+
                 </motion.p>
               </motion.div>
             )}
@@ -183,7 +274,9 @@ export default function Home() {
                   fileName={file?.name || 'arquivo.pdf'}
                   downloadUrl={result.downloadUrl}
                   onReset={handleClear}
+                  mode={mode}
                 />
+
               </motion.div>
             )}
 
